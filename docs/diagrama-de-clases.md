@@ -60,6 +60,18 @@ flowchart TD
 Regla de dependencia: los módulos de dominio **no** dependen de infraestructura. `shared` no
 depende de nadie; `seguridad` y `configuracion` son transversales.
 
+### Justificación del diseño
+
+- La división responde a **límites funcionales** del refugio (admisión, espacio, inventario,
+  donaciones, adopción, cuidados) más que a una capa técnica: cada módulo es un *bounded
+  context* con su propio vocabulario y sus propias invariantes.
+- `shared` queda en la base porque solo contiene tipos de valor y contratos sin dependencias,
+  lo que evita ciclos entre módulos.
+- `seguridad` y `configuracion` son transversales porque varios contextos los consultan, pero
+  la dependencia es **dirigida**: ellos no dependen del resto del dominio.
+- La prohibición de depender de infraestructura mantiene el dominio **puro y testeable** sin
+  base de datos ni framework (arquitectura hexagonal); la infraestructura se conecta después.
+
 ---
 
 ## 1. Seguridad y personas
@@ -95,6 +107,17 @@ classDiagram
     Usuario --> Rol : tiene
     Rol --> "*" Permiso : concede
 ```
+
+### Justificación del diseño
+
+- `Usuario` guarda `hashCredencial`, **nunca** la credencial en texto plano (plaintext): el secreto no aparece
+  en memoria ni en logs; la autenticación compara hashes, no textos planos.
+- `Rol` es un enum porque los roles del refugio son un conjunto fijo y conocido; un enum los
+  hace exhaustivos en las comparaciones y evita roles mal escritos.
+- `Permiso` se separa de `Rol` porque la autorización se comprueba por **acción sensible**
+  (permiso) y no por nombre de rol; así se aplica mínimo privilegio y se audita qué acción se
+  autorizó, sin condicionales dispersos en los casos de uso.
+- La relación `Rol → "*" Permiso` centraliza la matriz rol-permiso en el propio rol.
 
 ---
 
@@ -180,6 +203,18 @@ classDiagram
 
 Una **devolución** no reabre el ingreso anterior: crea un nuevo `Ingreso` con
 `origen = DEVOLUCION` sobre el mismo `Animal`.
+
+### Justificación del diseño
+
+- `Animal` es el agregado raíz: agrupa identidad, estado e identificadores. `Ingreso` no se
+  incrusta sino que se relaciona como **episodios** (agregación), porque un mismo animal puede
+  tener varios ingresos a lo largo de su vida (rescate, devolución, derivación).
+- La devolución crea un `Ingreso` nuevo en lugar de reabrir el anterior: cada ingreso conserva
+  su decisión original y el historial queda intacto.
+- `IdentificadorAnimal` es un *value object* en composición: la identidad provisional puede
+  consolidarse luego en chip o tatuaje sin perder la referencia anterior.
+- `cambiarEstado` recibe `Usuario` y motivo: toda transición queda atribuida y auditable, en
+  lugar de un setter libre de estado.
 
 ---
 
@@ -298,6 +333,21 @@ Invariantes clave (se resuelven en los casos de uso, no en la UI):
 - Las reglas son **componibles** (`ReglaEspacio` = patrón *Specification/Strategy*); una
   excepción exige `ExcepcionCompatibilidad` con motivo y auditoría.
 
+### Justificación del diseño
+
+- `Ubicacion` abstracta con `Espacio` y `UbicacionExterna` unifica la estadía interna y el
+  tránsito: una `Estadia` apunta a una ubicación sin importar si es propia o externa, y el
+  tránsito deja de ser un caso especial.
+- `ReglaEspacio` como interfaz componible (*Specification/Strategy*) evita un condicional
+  gigante en `admite`: cada restricción (especie, tamaño, aislamiento) es una regla
+  independiente, evaluable y combinable, y se audita por separado.
+- `ExcepcionCompatibilidad` obliga a registrar la regla incumplida, el motivo y quién
+  autoriza: una excepción nunca es un chequeo saltado en silencio.
+- `Movimiento` es inmutable: las correcciones son movimientos nuevos, lo que preserva el
+  historial de traslados.
+- La estadía activa única y el cierre/apertura atómico se resuelven en los casos de uso, no en
+  la interfaz.
+
 ---
 
 ## 4. Inventario
@@ -399,6 +449,18 @@ classDiagram
 Reglas: el consumo referencia un `Lote` concreto, prioriza el lote apto de vencimiento más
 próximo, nunca usa lotes vencidos y jamás supera lo disponible. `MovimientoInventario` es
 inmutable (las correcciones son movimientos nuevos con motivo).
+
+### Justificación del diseño
+
+- `Lote` es la unidad de trazabilidad (y no una cantidad global por recurso): permite consumir
+  por vencimiento más próximo (FIFO) y seguir la cadena donante → consumo.
+- `BigDecimal` para cantidades evita los errores de precisión binaria en masas y volúmenes.
+- `Unidad` como enum y `unidadBase` en `Recurso` mantienen las unidades físicas explícitas y
+  consistentes.
+- `MovimientoInventario` inmutable con `claveIdempotencia`: los reintentos no duplican
+  efectos; una corrección es un movimiento nuevo con motivo.
+- `Alerta` separada del `Recurso`: la alerta es un **hecho generado** (stock bajo, vencimiento
+  próximo), no un estado del recurso.
 
 ---
 
@@ -523,6 +585,19 @@ Invariantes: `aceptada + rechazada <= recibida`; solo lo **aceptado** genera `Lo
 rechazado o vencido queda en el registro de inspección para trazabilidad pero nunca en stock
 utilizable; las correcciones se auditan, no sobrescriben.
 
+### Justificación del diseño
+
+- `LineaDonacion` tiene decisión propia porque cada línea (recurso) se acepta, rechaza o
+  parcializa de forma independiente; una donación puede quedar parcialmente aceptada.
+- `DecisionLinea` se separa de `LineaDonacion` para registrar la decisión como un hecho
+  (cantidades aceptadas/rechazadas y motivo), no como campos que se sobrescriben.
+- Solo lo **aceptado** genera `Lote`: lo rechazado o vencido queda en la inspección para
+  trazabilidad, nunca en stock utilizable.
+- `Recepcion` e `Inspeccion` son etapas distintas: recibir no equivale a inspeccionar ni a
+  decidir; cada una conserva su actor e instante.
+- `Constancia` se desacopla de la donación: las comunicaciones (agradecimiento/constancia) se
+  gestionan aparte y reintentan sin modificar la donación.
+
 ---
 
 ## 6. Cuidados
@@ -616,6 +691,17 @@ classDiagram
 
 El **registro de cuidado y el descuento de stock** se confirman juntos o no se confirma
 ninguno (transacción). El sistema alerta tareas vencidas; no decide dosis.
+
+### Justificación del diseño
+
+- `TareaCuidado` (plan) se separa de `RegistroCuidado` (ejecución): planificar una tarea no
+  registra que se hizo; cada ejecución queda con su fecha y resultado.
+- `Consumo` genera `MovimientoInventario`: el registro de cuidado y el descuento de stock se
+  confirman en la misma transacción, o no se confirma ninguno.
+- `IndicacionMedica` se separa porque el sistema registra la indicación recibida y su
+  administración, pero **no** genera indicaciones clínicas ni decide dosis.
+- `EventoSalud` es independiente de las tareas planificadas: las observaciones y eventos de
+  salud no se mezclan con la planificación operativa.
 
 ---
 
@@ -715,6 +801,17 @@ classDiagram
 No puede haber **dos reservas vigentes** para el mismo animal. El tránsito es una
 `UbicacionExterna`, nunca una adopción.
 
+### Justificación del diseño
+
+- `Postulacion` modela el proceso completo con estados y hechos (`Verificacion`,
+  `Entrevista`): cada etapa se registra, no se sobrescribe.
+- `Reserva` tiene vigencia y se impide tener dos reservas vigentes para el mismo animal, para
+  evitar bloqueos simultáneos.
+- `HogarTransito` hereda de `UbicacionExterna`: el tránsito es una ubicación externa, nunca
+  una adopción; se reutiliza la abstracción de ubicación del módulo de espacio.
+- `Adopcion` es una entidad propia con acuerdo y seguimiento, separada de la `Postulacion`
+  que la originó.
+
 ---
 
 ## 8. Auditoría, archivos, configuración y outbox
@@ -789,6 +886,18 @@ classDiagram
 `EventoAuditoria` **nunca** guarda credenciales ni secretos. `EventoDominio` implementa el
 patrón *transactional outbox* (Entrega 2): se registra en la misma transacción del cambio de
 dominio y se procesa después; los reintentos son idempotentes.
+
+### Justificación del diseño
+
+- `EventoAuditoria` es inmutable y **nunca** guarda credenciales ni secretos: el historial no
+  se edita y no expone datos sensibles.
+- `EventoDominio` implementa *transactional outbox*: el evento se registra en la misma
+  transacción del cambio y se procesa después; ante fallo del proveedor no se pierde y los
+  reintentos son idempotentes.
+- `Archivo` guarda referencia (ruta, tipo, tamaño), no el contenido binario: el dominio no
+  arrastra blobs.
+- `Configuracion` es clave/valor genérico: los catálogos y políticas configurables no
+  requieren una tabla por cada uno.
 
 ---
 
