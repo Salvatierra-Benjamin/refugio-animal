@@ -14,7 +14,7 @@ y el diagrama de clases. Las clases Java del dominio se implementan a continuaci
 ## Requisitos
 
 - JDK 17 o superior (probado con 25).
-- No necesitás Maven instalado: el proyecto incluye el **Maven Wrapper**.
+- No es necesario tener Maven instalado: el proyecto incluye el **Maven Wrapper**.
 
 ## Construir y probar
 
