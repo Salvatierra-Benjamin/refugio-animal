@@ -1,8 +1,10 @@
 package com.refugiotrack.animal;
 
 import com.refugiotrack.seguridad.Usuario;
+import com.refugiotrack.shared.Tamanio;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -24,6 +26,8 @@ public class Animal {
     private final String caracteristicas;
     private final String observaciones;
     private final LocalDate fechaNacimientoEstimada;
+    private Tamanio tamanio;
+    private LocalDateTime fechaIngreso;
     private EstadoAnimal estado;
     private final Set<IdentificadorAnimal> identificadores;
 
@@ -36,8 +40,27 @@ public class Animal {
         this.caracteristicas = caracteristicas;
         this.observaciones = observaciones;
         this.fechaNacimientoEstimada = fechaNacimientoEstimada;
+        this.tamanio = null;
+        this.fechaIngreso = null;
         this.estado = EstadoAnimal.PENDIENTE_DE_EVALUACION;
         this.identificadores = new LinkedHashSet<>();
+    }
+
+    /**
+     * Crea la ficha con tamaño estimado e instante de ingreso. Reutiliza la
+     * validación del constructor base. El tamaño puede ser nulo si se desconoce
+     * y el instante de ingreso puede ser nulo si no se registró.
+     *
+     * @param tamanio tamaño estimado del animal; puede ser nulo
+     * @param fechaIngreso instante de ingreso; puede ser nulo
+     */
+    public Animal(UUID id, Especie especie, String nombre, String identificacionProvisoria,
+                  String caracteristicas, String observaciones, LocalDate fechaNacimientoEstimada,
+                  Tamanio tamanio, LocalDateTime fechaIngreso) {
+        this(id, especie, nombre, identificacionProvisoria, caracteristicas, observaciones,
+                fechaNacimientoEstimada);
+        this.tamanio = tamanio;
+        this.fechaIngreso = fechaIngreso;
     }
 
     /**
@@ -98,6 +121,20 @@ public class Animal {
 
     public LocalDate getFechaNacimientoEstimada() {
         return fechaNacimientoEstimada;
+    }
+
+    /**
+     * Tamaño estimado del animal. Puede ser nulo si se desconoce.
+     */
+    public Tamanio getTamanio() {
+        return tamanio;
+    }
+
+    /**
+     * Instante de ingreso del animal. Puede ser nulo si no se registró.
+     */
+    public LocalDateTime getFechaIngreso() {
+        return fechaIngreso;
     }
 
     public EstadoAnimal getEstado() {
